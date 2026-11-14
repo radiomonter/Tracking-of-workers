@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">DreamHaus • Табель</string>
+    <string name="company_name">DreamHaus</string>
+    <string name="tab_timesheet">Табель</string>
+    <string name="tab_workers">Рабочие</string>
+    <string name="tab_summary">Сводка</string>
+    <string name="tab_excel">Excel</string>
+    
+    <string name="status_present">Явка (часы)</string>
+    <string name="status_absent">Неявка (Н / N)</string>
+    <string name="status_sick">Болезнь (Б / Ch)</string>
+    <string name="status_vacation">Отпуск (О / U)</string>
+    <string name="status_day_off">Выходной (В / W)</string>
+</resources>

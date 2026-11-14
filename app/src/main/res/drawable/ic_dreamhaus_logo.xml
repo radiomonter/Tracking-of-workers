@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Blue outer roof and walls -->
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M24,4 L4,22 L8,25.5 L24,11 L40,25.5 L44,22 Z" />
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M11,23 L11,42 L37,42 L37,23 L33,20 L33,38 L15,38 L15,20 Z" />
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M16,10 L16,5 L20,5 L20,13.5 Z" />
+    <!-- Gold accent inner line -->
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M24,15 L16,22 L16,35 L20,35 L20,24 L24,20 L28,24 L28,35 L32,35 L32,22 Z" />
+</vector>
