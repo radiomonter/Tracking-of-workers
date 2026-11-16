@@ -31,7 +31,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val storage = TimesheetStorage(application)
     val excelManager = ExcelManager(application)
 
-    private val _currentMonth = MutableStateFlow(MonthInfo(2026, 10))
+    private val _currentMonth = MutableStateFlow(MonthInfo.current())
     val currentMonth: StateFlow<MonthInfo> = _currentMonth.asStateFlow()
 
     private val _workers = MutableStateFlow<List<Worker>>(emptyList())
