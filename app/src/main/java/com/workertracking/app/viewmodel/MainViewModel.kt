@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.InputStream
+import java.util.Locale
 import java.util.regex.Pattern
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -296,22 +297,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun normalizedWorkerName(name: String): String =
+        name.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
+
     fun importFromExcel(inputStream: InputStream) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val result = excelManager.importTimesheet(inputStream)
-                if (result.workers.isNotEmpty()) {
-                    storage.saveWorkers(result.workers)
-                    storage.saveAttendance(result.entries)
-                    _workers.value = storage.getWorkers()
-                    _attendance.value = storage.getAttendance()
-                    if (result.monthInfo != null) {
-                        _currentMonth.value = result.monthInfo
-                    }
-                    _operationStatus.value = "Успешно импортировано: ${result.workers.size} сотрудников, ${result.entries.size} отметок"
-                } else {
+                if (result.workers.isEmpty()) {
                     _operationStatus.value = "В файле не найдено строк с сотрудниками"
+                    return@launch
                 }
+                if (result.entries.isEmpty()) {
+                    _operationStatus.value = "Импорт остановлен: в файле нет отметок посещаемости"
+                    return@launch
+                }
+
+                val month = result.monthInfo ?: MonthInfo.current()
+                val existingWorkers = storage.getWorkers().toMutableList()
+                val importedNames = mutableSetOf<String>()
+                val workerIdMap = mutableMapOf<Long, Long>()
+                val newWorkers = mutableListOf<Worker>()
+                var nextWorkerId = maxOf(System.currentTimeMillis(), (existingWorkers.maxOfOrNull { it.id } ?: 0L) + 1L)
+
+                for (importedWorker in result.workers) {
+                    val nameKey = normalizedWorkerName(importedWorker.fullName)
+                    if (nameKey.isBlank()) {
+                        _operationStatus.value = "Импорт остановлен: в файле есть сотрудник без имени"
+                        return@launch
+                    }
+                    if (!importedNames.add(nameKey)) {
+                        _operationStatus.value = "Импорт остановлен: в файле повторяется сотрудник «${importedWorker.fullName}»"
+                        return@launch
+                    }
+
+                    val matches = existingWorkers.filter { normalizedWorkerName(it.fullName) == nameKey }
+                    if (matches.size > 1) {
+                        _operationStatus.value = "Импорт остановлен: в списке сотрудников неоднозначное совпадение «${importedWorker.fullName}»"
+                        return@launch
+                    }
+
+                    val targetWorker = matches.singleOrNull() ?: importedWorker.copy(
+                        id = nextWorkerId++,
+                        orderIndex = existingWorkers.size + newWorkers.size + 1
+                    ).also { newWorkers.add(it) }
+                    workerIdMap[importedWorker.id] = targetWorker.id
+                }
+
+                val mappedEntries = result.entries.map { entry ->
+                    val workerId = workerIdMap[entry.workerId]
+                        ?: throw IllegalArgumentException("Не удалось сопоставить сотрудника из Excel")
+                    entry.copy(workerId = workerId)
+                }
+                val importedWorkerIds = workerIdMap.values.toSet()
+                val preservedAttendance = storage.getAttendance().filterNot { entry ->
+                    entry.workerId in importedWorkerIds && entry.year == month.year && entry.month == month.month
+                }
+
+                storage.saveWorkers(existingWorkers + newWorkers)
+                storage.saveAttendance(preservedAttendance + mappedEntries)
+                _workers.value = storage.getWorkers()
+                _attendance.value = storage.getAttendance()
+                _currentMonth.value = month
+                _operationStatus.value = "Импортировано: ${result.workers.size} сотрудников, ${mappedEntries.size} отметок за ${month.month}/${month.year}. Остальные данные сохранены."
             } catch (e: Exception) {
                 e.printStackTrace()
                 _operationStatus.value = "Ошибка при импорте Excel: ${e.message}"
@@ -378,11 +426,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         comment: String = "Аванс"
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            if (payments.any { (_, amount) -> amount <= 0.0 || !amount.isFinite() }) {
+                _operationStatus.value = "Ведомость не сохранена: суммы должны быть больше нуля"
+                return@launch
+            }
+
+            // An edit replaces the source date group. Never clear an existing group at the target date.
             if (oldDate != null) {
                 storage.deleteAdvancesForDate(oldDate)
-            }
-            if (oldDate != newDate) {
-                storage.deleteAdvancesForDate(newDate)
             }
             val list = payments.mapIndexed { idx, (worker, amount) ->
                 AdvancePayment(
@@ -437,109 +488,98 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // 1. Detect date
                 var detectedDate: String? = null
                 val dateRegex = Pattern.compile("(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})")
                 for (line in lines) {
-                    val m = dateRegex.matcher(line)
-                    if (m.find()) {
-                        val d = m.group(1)?.toIntOrNull() ?: 1
-                        val mth = m.group(2)?.toIntOrNull() ?: 10
-                        val y = m.group(3)?.toIntOrNull() ?: 2026
-                        detectedDate = "%02d.%02d.%04d".format(d, mth, y)
+                    val matcher = dateRegex.matcher(line)
+                    if (matcher.find()) {
+                        val day = matcher.group(1)?.toIntOrNull() ?: 1
+                        val month = matcher.group(2)?.toIntOrNull() ?: 1
+                        val year = matcher.group(3)?.toIntOrNull() ?: 2026
+                        detectedDate = "%02d.%02d.%04d".format(day, month, year)
                         break
                     }
                 }
                 val resolvedDate = detectedDate ?: "%02d.%02d.%04d".format(13, _currentMonth.value.month, _currentMonth.value.year)
-
-                // 2. Parse lines with worker name & amount
-                val currentWorkers = _workers.value.toMutableList()
-                val linePattern = Pattern.compile("^(?:\\d+[\\s.:)\\-#]+|\\d+\\s+)?(.*?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s*(?:zł|zl|pln|uah|грн)?$", Pattern.CASE_INSENSITIVE)
-
+                val currentWorkers = storage.getWorkers()
+                val linePattern = Pattern.compile(
+                    "^(?:\\d+[\\s.:)\\-#]+|\\d+\\s+)?(.*?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s*(zł|zl|pln|uah|грн)?$",
+                    Pattern.CASE_INSENSITIVE
+                )
                 val newAdvances = mutableListOf<AdvancePayment>()
-                var parsedCount = 0
+                var validationError: String? = null
 
                 lines.forEachIndexed { index, line ->
-                    if (line.equals(detectedDate, ignoreCase = true) ||
+                    if (validationError != null) return@forEachIndexed
+                    if (dateRegex.matcher(line).find() ||
                         line.startsWith("итого", ignoreCase = true) ||
                         line.startsWith("total", ignoreCase = true) ||
                         line.startsWith("razem", ignoreCase = true) ||
                         line.startsWith("suma", ignoreCase = true)
-                    ) {
+                    ) return@forEachIndexed
+
+                    val matcher = linePattern.matcher(line)
+                    if (!matcher.matches()) {
+                        if (line.any { it.isDigit() }) {
+                            validationError = "Не удалось разобрать строку: «$line»"
+                        }
                         return@forEachIndexed
                     }
 
-                    val matcher = linePattern.matcher(line)
-                    if (matcher.matches()) {
-                        val rawName = matcher.group(1)?.trim() ?: ""
-                        val amountStr = matcher.group(2)?.replace(',', '.') ?: ""
-                        val amount = amountStr.toDoubleOrNull() ?: return@forEachIndexed
-
-                        if (rawName.isBlank()) return@forEachIndexed
-
-                        // Match worker
-                        var matchedWorker = currentWorkers.firstOrNull { it.fullName.equals(rawName, ignoreCase = true) }
-
-                        // Fuzzy / partial matching
-                        if (matchedWorker == null) {
-                            val parts = rawName.split(" ").filter { it.isNotBlank() }
-                            matchedWorker = currentWorkers.firstOrNull { w ->
-                                val wLower = w.fullName.lowercase()
-                                parts.any { p ->
-                                    val pLower = p.lowercase()
-                                    wLower.contains(pLower) ||
-                                    (pLower == "rolk" && wLower.contains("roik")) ||
-                                    (pLower == "jambulat" && wLower.contains("gambulat")) ||
-                                    (pLower == "gambulat" && wLower.contains("jambulat"))
-                                }
-                            }
-                        }
-
-                        // If not found, create new worker
-                        val finalWorker = if (matchedWorker != null) {
-                            matchedWorker
-                        } else {
-                            val created = Worker(
-                                id = System.currentTimeMillis() + index,
-                                orderIndex = currentWorkers.size + 1,
-                                fullName = rawName,
-                                position = "Монтажник",
-                                hourlyRate = 28.0
-                            )
-                            currentWorkers.add(created)
-                            storage.saveWorkers(currentWorkers)
-                            created
-                        }
-
-                        newAdvances.add(
-                            AdvancePayment(
-                                id = System.currentTimeMillis() + index,
-                                workerId = finalWorker.id,
-                                workerName = finalWorker.fullName,
-                                date = resolvedDate,
-                                amount = amount,
-                                currency = "zł",
-                                comment = "Аванс",
-                                paymentMethod = "Наличные"
-                            )
-                        )
-                        parsedCount++
+                    val rawName = matcher.group(1)?.trim().orEmpty()
+                    val amount = matcher.group(2)?.replace(',', '.')?.toDoubleOrNull()
+                    val currency = matcher.group(3)?.lowercase(Locale.ROOT)
+                    if (currency == "uah" || currency == "грн") {
+                        validationError = "Выплаты в гривнах нельзя смешивать с PLN. Укажите суммы в zł/PLN."
+                        return@forEachIndexed
                     }
+                    if (rawName.isBlank() || amount == null || !amount.isFinite() || amount <= 0.0) {
+                        validationError = "Проверьте имя и сумму в строке: «$line»"
+                        return@forEachIndexed
+                    }
+
+                    val matches = currentWorkers.filter { normalizedWorkerName(it.fullName) == normalizedWorkerName(rawName) }
+                    if (matches.isEmpty()) {
+                        validationError = "Сотрудник «$rawName» не найден. Добавьте его в список и повторите импорт."
+                        return@forEachIndexed
+                    }
+                    if (matches.size > 1) {
+                        validationError = "Имя «$rawName» совпадает с несколькими сотрудниками. Уточните список перед импортом."
+                        return@forEachIndexed
+                    }
+
+                    val worker = matches.single()
+                    newAdvances.add(
+                        AdvancePayment(
+                            id = System.currentTimeMillis() + index,
+                            workerId = worker.id,
+                            workerName = worker.fullName,
+                            date = resolvedDate,
+                            amount = amount,
+                            currency = "zł",
+                            comment = "Аванс",
+                            paymentMethod = "Наличные"
+                        )
+                    )
+                }
+
+                if (validationError != null) {
+                    val message = validationError!!
+                    _operationStatus.value = message
+                    launch(Dispatchers.Main) { onFinished(false, message) }
+                    return@launch
                 }
 
                 if (newAdvances.isNotEmpty()) {
                     storage.addAdvances(newAdvances)
-                    _workers.value = storage.getWorkers()
                     _advances.value = storage.getAdvances()
                     val total = newAdvances.sumOf { it.amount }
                     val totalFormatted = if (total % 1.0 == 0.0) total.toInt().toString() else "%.2f".format(total)
-                    val msg = "Успешно сохранено $parsedCount выплат на $resolvedDate на сумму $totalFormatted zł"
-                    _operationStatus.value = msg
-                    launch(Dispatchers.Main) { onFinished(true, msg) }
+                    val message = "Успешно сохранено ${newAdvances.size} выплат на $resolvedDate на сумму $totalFormatted zł"
+                    _operationStatus.value = message
+                    launch(Dispatchers.Main) { onFinished(true, message) }
                 } else {
-                    launch(Dispatchers.Main) {
-                        onFinished(false, "Не удалось распознать строки выплат. Проверьте формат текста.")
-                    }
+                    launch(Dispatchers.Main) { onFinished(false, "Не найдены строки выплат с сотрудниками и суммами.") }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
