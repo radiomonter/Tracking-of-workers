@@ -88,7 +88,12 @@ fun GoogleDriveSyncDialog(
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(context, "Вход не выполнен: ${e.message}", Toast.LENGTH_SHORT).show()
+            val errorMsg = if (e is ApiException && e.statusCode == 10) {
+                "Ошибка 10 (DEVELOPER_ERROR): Google Cloud обновляет настройки (подождите 5-10 мин). Проверьте SHA-1 и тестовых пользователей в консоли."
+            } else {
+                "Вход не выполнен: ${e.message}"
+            }
+            Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
         }
     }
 
