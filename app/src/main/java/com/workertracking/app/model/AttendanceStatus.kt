@@ -14,12 +14,20 @@ enum class AttendanceStatus(
 
     companion object {
         fun fromString(value: String): AttendanceStatus? {
-            val trimmed = value.trim().lowercase()
-            return when (trimmed) {
-                "н", "n" -> ABSENT
-                "б", "ch" -> SICK
-                "о", "u" -> VACATION
-                "в", "w" -> DAY_OFF
+            val trimmed = value.trim()
+            if (trimmed.isEmpty()) return null
+            val lower = trimmed.lowercase()
+
+            // 1. Direct enum name matching (e.g. DAY_OFF, ABSENT, SICK, VACATION, PRESENT)
+            entries.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }?.let { return it }
+
+            // 2. Short codes and labels in Russian and Polish
+            return when {
+                lower in listOf("н", "n", "absent", "неявка", "nieobecność", "nieobecnosc") -> ABSENT
+                lower in listOf("б", "ch", "sick", "болезнь", "choroba") -> SICK
+                lower in listOf("о", "u", "vacation", "отпуск", "urlop") -> VACATION
+                lower in listOf("в", "w", "day_off", "dayoff", "выходной", "dzień wolny", "dzien wolny") -> DAY_OFF
+                lower in listOf("я", "o", "present", "явка", "obecność", "obecnosc") -> PRESENT
                 else -> null
             }
         }

@@ -271,11 +271,11 @@ class ExcelManager(private val context: Context) {
     <font><sz val="11.0"/><color theme="1"/><name val="Calibri"/></font>
     <font><sz val="10.0"/><color theme="1"/><name val="Calibri"/></font>
     <font><b/><sz val="11.0"/><color theme="1"/><name val="Calibri"/></font>
-    <font><b/><sz val="11.0"/><color rgb="FF065F46"/><name val="Calibri"/></font>
-    <font><b/><sz val="11.0"/><color rgb="FF991B1B"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF047857"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FFB91C1C"/><name val="Calibri"/></font>
     <font><b/><sz val="11.0"/><color rgb="FF92400E"/><name val="Calibri"/></font>
     <font><b/><sz val="11.0"/><color rgb="FF0369A1"/><name val="Calibri"/></font>
-    <font><b/><sz val="11.0"/><color rgb="FF4B5563"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF1E293B"/><name val="Calibri"/></font>
   </fonts>
   <fills count="12">
     <fill><patternFill patternType="none"/></fill>
@@ -284,12 +284,12 @@ class ExcelManager(private val context: Context) {
     <fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/><bgColor rgb="FFD9E2F3"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor rgb="FFFFFFFF"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor rgb="FFFFF2CC"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFD1FAE5"/><bgColor rgb="FFD1FAE5"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/><bgColor rgb="FFFEE2E2"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor rgb="FFFEF3C7"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor rgb="FFE0F2FE"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/><bgColor rgb="FFF3F4F6"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor rgb="FFE2E8F0"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFA7F3D0"/><bgColor rgb="FFA7F3D0"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFECACA"/><bgColor rgb="FFFECACA"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFDE68A"/><bgColor rgb="FFFDE68A"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFBAE6FD"/><bgColor rgb="FFBAE6FD"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFCBD5E1"/><bgColor rgb="FFCBD5E1"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF94A3B8"/><bgColor rgb="FF94A3B8"/></patternFill></fill>
   </fills>
   <borders count="2">
     <border/>

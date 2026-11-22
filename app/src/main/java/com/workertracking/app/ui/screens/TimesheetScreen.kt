@@ -448,16 +448,17 @@ private fun TimesheetCell(
     entry: AttendanceEntry?,
     onClick: () -> Unit
 ) {
-    val (bgColor, textColor, text) = when {
+    val (bgColor, textColor, borderColor, text) = when {
         entry?.hours != null && entry.hours > 0 -> {
             val hText = if (entry.hours % 1.0 == 0.0) entry.hours.toInt().toString() else entry.hours.toString()
-            Triple(ColorPresentBg, ColorPresent, hText)
+            Quadruple(ColorPresentBg, ColorPresent, Color(0xFF34D399), hText)
         }
-        entry?.status == AttendanceStatus.ABSENT -> Triple(ColorAbsentBg, ColorAbsent, "Н")
-        entry?.status == AttendanceStatus.SICK -> Triple(ColorSickBg, ColorSick, "Б")
-        entry?.status == AttendanceStatus.VACATION -> Triple(ColorVacationBg, ColorVacation, "О")
-        entry?.status == AttendanceStatus.DAY_OFF -> Triple(ColorDayOffBg, ColorDayOff, "В")
-        else -> Triple(Color.Transparent, Color.Transparent, "")
+        entry?.status == AttendanceStatus.ABSENT -> Quadruple(ColorAbsentBg, ColorAbsent, Color(0xFFF87171), "Н")
+        entry?.status == AttendanceStatus.SICK -> Quadruple(ColorSickBg, ColorSick, Color(0xFFFBBF24), "Б")
+        entry?.status == AttendanceStatus.VACATION -> Quadruple(ColorVacationBg, ColorVacation, Color(0xFF38BDF8), "О")
+        entry?.status == AttendanceStatus.DAY_OFF -> Quadruple(ColorDayOffBg, ColorDayOff, Color(0xFF94A3B8), "В")
+        entry?.status == AttendanceStatus.PRESENT -> Quadruple(ColorPresentBg, ColorPresent, Color(0xFF34D399), "Я")
+        else -> Quadruple(Color.Transparent, Color.Transparent, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), "")
     }
 
     Box(
@@ -467,8 +468,8 @@ private fun TimesheetCell(
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(
-                width = 0.5.dp,
-                color = if (text.isEmpty()) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f) else Color.Transparent,
+                width = if (text.isNotEmpty()) 1.dp else 0.5.dp,
+                color = borderColor,
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable(onClick = onClick),
@@ -477,13 +478,15 @@ private fun TimesheetCell(
         if (text.isNotEmpty()) {
             Text(
                 text = text,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = textColor
             )
         }
     }
 }
+
+private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 @Composable
 private fun TimesheetLegend() {
@@ -505,6 +508,7 @@ private fun TimesheetLegend() {
             LegendItem(color = ColorAbsent, label = "Н (неявка)")
             LegendItem(color = ColorSick, label = "Б (болезнь)")
             LegendItem(color = ColorVacation, label = "О (отпуск)")
+            LegendItem(color = ColorDayOff, label = "В (выходной)")
         }
     }
 }
