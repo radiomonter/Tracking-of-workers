@@ -42,7 +42,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
 
-    private val _currentMonth = MutableStateFlow(MonthInfo(2026, 10))
+    private val _currentMonth = MutableStateFlow(MonthInfo.current())
     val currentMonth: StateFlow<MonthInfo> = _currentMonth.asStateFlow()
 
     private val _workers = MutableStateFlow<List<Worker>>(emptyList())
