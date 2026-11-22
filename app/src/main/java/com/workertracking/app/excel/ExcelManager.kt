@@ -65,6 +65,9 @@ class ExcelManager(private val context: Context) {
             zipEntries[sheetKey] = modifiedXml.toByteArray(Charsets.UTF_8)
         }
 
+        val stylesKey = "xl/styles.xml"
+        zipEntries[stylesKey] = getEnhancedTimesheetStylesXml().toByteArray(Charsets.UTF_8)
+
         FileOutputStream(outputFile).use { fos ->
             ZipOutputStream(fos).use { zos ->
                 for ((name, bytes) in zipEntries) {
@@ -105,7 +108,7 @@ class ExcelManager(private val context: Context) {
 
         // Update Row 2 with Month & Responsible person
         val monthPattern = Pattern.compile("(<row[^>]*r=\"2\"[^>]*>)(.*?)(</row>)", Pattern.DOTALL)
-        val monthHeaderLegend = "Фирма: $companyName   •   Месяц: ${monthInfo.titleRuPl}   •   Заполнил: $responsiblePerson       [Н/N=неявка, Б/Ch=болезнь, О/U=отпуск]"
+        val monthHeaderLegend = "Фирма: $companyName   •   Месяц: ${monthInfo.titleRuPl}   •   Заполнил: $responsiblePerson       [🟢 Явка=часы, 🔴 Н/N=неявка, 🟡 Б/Ch=болезнь, 🔵 О/U=отпуск, ⚪ В/W=выходной]"
         val row2Xml = "<row r=\"2\" spans=\"1:36\"><c r=\"A2\" s=\"2\" t=\"inlineStr\"><is><t>${escapeXml(monthHeaderLegend)}</t></is></c></row>"
 
         xmlWithHeader = if (monthPattern.matcher(xmlWithHeader).find()) {
@@ -142,12 +145,28 @@ class ExcelManager(private val context: Context) {
         rowBlocks.append("<c r=\"AJ$totalRowNum\" s=\"5\"/>")
         rowBlocks.append("</row>")
 
+        // Visual Colored Legend Row below table
+        val legendRow = totalRowNum + 1
+        rowBlocks.append("<row r=\"$legendRow\" spans=\"1:36\" ht=\"20\" customHeight=\"1\">")
+        rowBlocks.append("<c r=\"B$legendRow\" s=\"5\" t=\"inlineStr\"><is><t>Обозначения / Legenda:</t></is></c>")
+        rowBlocks.append("<c r=\"C$legendRow\" s=\"16\"><v>10</v></c>")
+        rowBlocks.append("<c r=\"D$legendRow\" s=\"5\" t=\"inlineStr\"><is><t>Явка (часы)</t></is></c>")
+        rowBlocks.append("<c r=\"G$legendRow\" s=\"17\" t=\"inlineStr\"><is><t>Н</t></is></c>")
+        rowBlocks.append("<c r=\"H$legendRow\" s=\"5\" t=\"inlineStr\"><is><t>Неявка</t></is></c>")
+        rowBlocks.append("<c r=\"K$legendRow\" s=\"18\" t=\"inlineStr\"><is><t>Б</t></is></c>")
+        rowBlocks.append("<c r=\"L$legendRow\" s=\"5\" t=\"inlineStr\"><is><t>Болезнь</t></is></c>")
+        rowBlocks.append("<c r=\"O$legendRow\" s=\"19\" t=\"inlineStr\"><is><t>О</t></is></c>")
+        rowBlocks.append("<c r=\"P$legendRow\" s=\"5\" t=\"inlineStr\"><is><t>Отпуск</t></is></c>")
+        rowBlocks.append("<c r=\"S$legendRow\" s=\"20\" t=\"inlineStr\"><is><t>В</t></is></c>")
+        rowBlocks.append("<c r=\"T$legendRow\" s=\"5\" t=\"inlineStr\"><is><t>Выходной</t></is></c>")
+        rowBlocks.append("</row>")
+
         // Spacer Row
-        val spacerRow = totalRowNum + 1
+        val spacerRow = totalRowNum + 2
         rowBlocks.append("<row r=\"$spacerRow\" spans=\"1:36\"/>")
 
         // Signature Row 1: Sporządził (Maksym Terekhov)
-        val sigRow1 = totalRowNum + 2
+        val sigRow1 = totalRowNum + 3
         rowBlocks.append("<row r=\"$sigRow1\" spans=\"1:36\" ht=\"24\" customHeight=\"1\">")
         rowBlocks.append("<c r=\"B$sigRow1\" s=\"5\" t=\"inlineStr\"><is><t>Заполнил / Sporządził: $responsiblePerson ($companyName)</t></is></c>")
         rowBlocks.append("<c r=\"H$sigRow1\" s=\"5\" t=\"inlineStr\"><is><t>Подпись / Podpis: ___________________</t></is></c>")
@@ -155,7 +174,7 @@ class ExcelManager(private val context: Context) {
         rowBlocks.append("</row>")
 
         // Signature Row 2: Sprawdził / Kierownik robót
-        val sigRow2 = totalRowNum + 3
+        val sigRow2 = totalRowNum + 4
         rowBlocks.append("<row r=\"$sigRow2\" spans=\"1:36\" ht=\"24\" customHeight=\"1\">")
         rowBlocks.append("<c r=\"B$sigRow2\" s=\"5\" t=\"inlineStr\"><is><t>Проверил / Sprawdził: ___________________ (Kierownik robót)</t></is></c>")
         rowBlocks.append("<c r=\"H$sigRow2\" s=\"5\" t=\"inlineStr\"><is><t>Подпись / Podpis: ___________________</t></is></c>")
@@ -198,20 +217,29 @@ class ExcelManager(private val context: Context) {
             val entry = entryMap["${worker.id}_$day"]
 
             if (day > monthInfo.daysInMonth) {
-                sb.append("<c r=\"$cellRef\" s=\"4\"/>")
+                // Inactive day outside month: blocked gray fill
+                sb.append("<c r=\"$cellRef\" s=\"21\"/>")
             } else if (entry != null) {
                 if (entry.hours != null && entry.hours > 0) {
                     totalDays++
                     totalHours += entry.hours
                     val hoursStr = if (entry.hours % 1.0 == 0.0) entry.hours.toInt().toString() else entry.hours.toString()
-                    sb.append("<c r=\"$cellRef\" s=\"4\"><v>$hoursStr</v></c>")
+                    // Green badge (#D1FAE5) with dark green bold text (#065F46)
+                    sb.append("<c r=\"$cellRef\" s=\"16\"><v>$hoursStr</v></c>")
                 } else if (entry.status != null) {
-                    sb.append("<c r=\"$cellRef\" s=\"4\" t=\"inlineStr\"><is><t>${entry.status.codeRu}</t></is></c>")
+                    val (styleIdx, code) = when (entry.status) {
+                        AttendanceStatus.ABSENT -> Pair("17", entry.status.codeRu)   // Red (#FEE2E2), dark red bold
+                        AttendanceStatus.SICK -> Pair("18", entry.status.codeRu)     // Yellow (#FEF3C7), dark amber bold
+                        AttendanceStatus.VACATION -> Pair("19", entry.status.codeRu) // Sky blue (#E0F2FE), dark blue bold
+                        AttendanceStatus.DAY_OFF -> Pair("20", entry.status.codeRu)  // Soft gray (#F3F4F6), dark gray bold
+                        AttendanceStatus.PRESENT -> Pair("16", entry.status.codeRu)  // Green (#D1FAE5)
+                    }
+                    sb.append("<c r=\"$cellRef\" s=\"$styleIdx\" t=\"inlineStr\"><is><t>$code</t></is></c>")
                 } else {
-                    sb.append("<c r=\"$cellRef\" s=\"4\"/>")
+                    sb.append("<c r=\"$cellRef\" s=\"22\"/>")
                 }
             } else {
-                sb.append("<c r=\"$cellRef\" s=\"4\"/>")
+                sb.append("<c r=\"$cellRef\" s=\"22\"/>")
             }
         }
 
@@ -230,6 +258,81 @@ class ExcelManager(private val context: Context) {
 
         sb.append("</row>")
         return RowStats(sb.toString(), totalDays, totalHours)
+    }
+
+    private fun getEnhancedTimesheetStylesXml(): String {
+        return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <fonts count="12">
+    <font><sz val="11.0"/><color theme="1"/><name val="Calibri"/><scheme val="minor"/></font>
+    <font><b/><sz val="13.0"/><color theme="1"/><name val="Calibri"/></font>
+    <font><i/><sz val="8.0"/><color theme="1"/><name val="Calibri"/></font>
+    <font><b/><sz val="8.0"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><sz val="11.0"/><color theme="1"/><name val="Calibri"/></font>
+    <font><sz val="10.0"/><color theme="1"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color theme="1"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF065F46"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF991B1B"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF92400E"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF0369A1"/><name val="Calibri"/></font>
+    <font><b/><sz val="11.0"/><color rgb="FF4B5563"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="12">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="lightGray"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF2F5496"/><bgColor rgb="FF2F5496"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/><bgColor rgb="FFD9E2F3"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor rgb="FFFFFFFF"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor rgb="FFFFF2CC"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD1FAE5"/><bgColor rgb="FFD1FAE5"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/><bgColor rgb="FFFEE2E2"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor rgb="FFFEF3C7"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor rgb="FFE0F2FE"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/><bgColor rgb="FFF3F4F6"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor rgb="FFE2E8F0"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border/>
+    <border>
+      <left style="thin"><color rgb="FFB0B0B0"/></left>
+      <right style="thin"><color rgb="FFB0B0B0"/></right>
+      <top style="thin"><color rgb="FFB0B0B0"/></top>
+      <bottom style="thin"><color rgb="FFB0B0B0"/></bottom>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf borderId="0" fillId="0" fontId="0" numFmtId="0" applyAlignment="1" applyFont="1"/>
+  </cellStyleXfs>
+  <cellXfs count="23">
+    <xf borderId="0" fillId="0" fontId="0" numFmtId="0" xfId="0" applyAlignment="1" applyFont="1"><alignment readingOrder="0" shrinkToFit="0" vertical="bottom" wrapText="0"/></xf>
+    <xf borderId="0" fillId="0" fontId="1" numFmtId="0" xfId="0" applyAlignment="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="0" fillId="0" fontId="2" numFmtId="0" xfId="0" applyAlignment="1" applyFont="1"><alignment horizontal="center"/></xf>
+    <xf borderId="1" fillId="2" fontId="3" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" shrinkToFit="0" vertical="center" wrapText="1"/></xf>
+    <xf borderId="1" fillId="3" fontId="4" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center"/></xf>
+    <xf borderId="1" fillId="3" fontId="5" numFmtId="0" xfId="0" applyBorder="1" applyFill="1" applyFont="1"/>
+    <xf borderId="1" fillId="3" fontId="4" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" readingOrder="0"/></xf>
+    <xf borderId="1" fillId="3" fontId="6" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center"/></xf>
+    <xf borderId="1" fillId="3" fontId="4" numFmtId="0" xfId="0" applyBorder="1" applyFill="1" applyFont="1"/>
+    <xf borderId="1" fillId="4" fontId="4" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center"/></xf>
+    <xf borderId="1" fillId="4" fontId="5" numFmtId="0" xfId="0" applyBorder="1" applyFill="1" applyFont="1"/>
+    <xf borderId="1" fillId="4" fontId="4" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" readingOrder="0"/></xf>
+    <xf borderId="1" fillId="4" fontId="6" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center"/></xf>
+    <xf borderId="1" fillId="4" fontId="4" numFmtId="0" xfId="0" applyBorder="1" applyFill="1" applyFont="1"/>
+    <xf borderId="1" fillId="5" fontId="6" numFmtId="0" xfId="0" applyBorder="1" applyFill="1" applyFont="1"/>
+    <xf borderId="1" fillId="5" fontId="6" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center"/></xf>
+    <xf borderId="1" fillId="6" fontId="7" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="1" fillId="7" fontId="8" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="1" fillId="8" fontId="9" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="1" fillId="9" fontId="10" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="1" fillId="10" fontId="11" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="1" fillId="11" fontId="4" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf borderId="1" fillId="4" fontId="4" numFmtId="0" xfId="0" applyAlignment="1" applyBorder="1" applyFill="1" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>
+  </cellXfs>
+  <cellStyles count="1">
+    <cellStyle xfId="0" name="Normal" builtinId="0"/>
+  </cellStyles>
+  <dxfs count="0"/>
+</styleSheet>""".trimIndent()
     }
 
     // ==========================================
