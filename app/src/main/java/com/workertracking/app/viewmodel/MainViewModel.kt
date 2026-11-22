@@ -14,6 +14,8 @@ import com.workertracking.app.model.MonthInfo
 import com.workertracking.app.model.Worker
 import com.workertracking.app.model.WorkerMonthSummary
 import com.workertracking.app.model.WorkerPayrollSummary
+import com.workertracking.app.sync.GoogleDriveSyncManager
+import com.workertracking.app.sync.SyncStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +32,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val storage = TimesheetStorage(application)
     val excelManager = ExcelManager(application)
+    val driveSyncManager = GoogleDriveSyncManager(application)
+
+    private val _syncStatus = MutableStateFlow(
+        SyncStatus(
+            isSignedIn = driveSyncManager.isSignedIn(),
+            accountEmail = driveSyncManager.getSignedInAccount()?.email
+        )
+    )
+    val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
 
     private val _currentMonth = MutableStateFlow(MonthInfo(2026, 10))
     val currentMonth: StateFlow<MonthInfo> = _currentMonth.asStateFlow()
@@ -544,6 +555,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 e.printStackTrace()
                 launch(Dispatchers.Main) { onFinished(false, "Ошибка: ${e.message}") }
+            }
+        }
+    }
+
+    // ==========================================
+    // GOOGLE DRIVE BIDIRECTIONAL SYNC
+    // ==========================================
+
+    fun updateSyncStatus() {
+        val signedIn = driveSyncManager.isSignedIn()
+        val email = driveSyncManager.getSignedInAccount()?.email
+        _syncStatus.value = _syncStatus.value.copy(
+            isSignedIn = signedIn,
+            accountEmail = email
+        )
+    }
+
+    fun syncWithGoogleDrive(
+        forcePullFromCloud: Boolean = false,
+        forcePushToCloud: Boolean = false,
+        onFinished: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _syncStatus.value = _syncStatus.value.copy(isSyncing = true)
+            val result = driveSyncManager.performTwoWaySync(
+                monthInfo = _currentMonth.value,
+                forcePullFromCloud = forcePullFromCloud,
+                forcePushToCloud = forcePushToCloud
+            )
+            val success = result.first
+            val message = result.second
+
+            if (success) {
+                // Reload fresh data in case cloud data was restored
+                _workers.value = storage.getWorkers()
+                _attendance.value = storage.getAttendance()
+                _advances.value = storage.getAdvances()
+                _appSettings.value = storage.getSettings()
+
+                val timeStr = java.time.LocalDateTime.now().format(
+                    java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
+                )
+                _syncStatus.value = _syncStatus.value.copy(
+                    isSyncing = false,
+                    lastSyncTime = timeStr,
+                    lastMessage = message
+                )
+            } else {
+                _syncStatus.value = _syncStatus.value.copy(
+                    isSyncing = false,
+                    lastMessage = message
+                )
+            }
+
+            _operationStatus.value = message
+            launch(Dispatchers.Main) {
+                onFinished(success, message)
+            }
+        }
+    }
+
+    fun signOutGoogle(onFinished: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            driveSyncManager.getSignInClient().signOut().addOnCompleteListener {
+                _syncStatus.value = SyncStatus(isSignedIn = false, accountEmail = null)
+                _operationStatus.value = "Вы вышли из учетной записи Google"
+                onFinished()
             }
         }
     }

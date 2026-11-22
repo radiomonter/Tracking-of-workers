@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
@@ -57,6 +58,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.workertracking.app.ui.components.GoogleDriveSyncDialog
 import com.workertracking.app.ui.screens.AccountingScreen
 import com.workertracking.app.ui.screens.ExcelScreen
 import com.workertracking.app.ui.screens.SummaryScreen
@@ -87,7 +89,9 @@ class MainActivity : ComponentActivity() {
             WorkerTrackingTheme {
                 var selectedTab by remember { mutableStateOf(AppTab.TIMESHEET) }
                 val settings by viewModel.appSettings.collectAsState()
+                val syncStatus by viewModel.syncStatus.collectAsState()
                 var showSignatureDialog by remember { mutableStateOf(false) }
+                var showDriveSyncDialog by remember { mutableStateOf(false) }
 
                 Scaffold(
                     topBar = {
@@ -171,6 +175,26 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
+                                // Google Drive Sync Button
+                                IconButton(onClick = { showDriveSyncDialog = true }) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudSync,
+                                            contentDescription = "Синхронизация с Google Диском",
+                                            tint = if (syncStatus.isSignedIn) PrimaryBlue else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (syncStatus.isSignedIn) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(ColorPresent)
+                                                    .align(Alignment.TopEnd)
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.width(4.dp))
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
@@ -227,6 +251,14 @@ class MainActivity : ComponentActivity() {
                             viewModel.updateSettings(comp, pers)
                             showSignatureDialog = false
                         }
+                    )
+                }
+
+                // Google Drive Sync Dialog
+                if (showDriveSyncDialog) {
+                    GoogleDriveSyncDialog(
+                        viewModel = viewModel,
+                        onDismiss = { showDriveSyncDialog = false }
                     )
                 }
             }

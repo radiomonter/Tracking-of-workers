@@ -404,4 +404,51 @@ class TimesheetStorage(private val context: Context) {
         )
         saveAdvances(sample)
     }
+
+    // ==========================================
+    // BACKUP / SYNC FULL DATABASE JSON
+    // ==========================================
+
+    @Synchronized
+    fun exportFullBackupJson(): String {
+        val obj = JSONObject()
+        obj.put("version", 1)
+        obj.put("timestamp", System.currentTimeMillis())
+        val settings = getSettings()
+        obj.put("companyName", settings.companyName)
+        obj.put("responsiblePerson", settings.responsiblePerson)
+        if (workersFile.exists()) {
+            obj.put("workers", JSONArray(workersFile.readText()))
+        }
+        if (attendanceFile.exists()) {
+            obj.put("attendance", JSONArray(attendanceFile.readText()))
+        }
+        if (advancesFile.exists()) {
+            obj.put("advances", JSONArray(advancesFile.readText()))
+        }
+        return obj.toString(2)
+    }
+
+    @Synchronized
+    fun importFullBackupJson(jsonString: String): Boolean {
+        return try {
+            val obj = JSONObject(jsonString)
+            if (obj.has("companyName") && obj.has("responsiblePerson")) {
+                saveSettings(AppSettings(obj.getString("companyName"), obj.getString("responsiblePerson")))
+            }
+            if (obj.has("workers")) {
+                workersFile.writeText(obj.getJSONArray("workers").toString(2))
+            }
+            if (obj.has("attendance")) {
+                attendanceFile.writeText(obj.getJSONArray("attendance").toString())
+            }
+            if (obj.has("advances")) {
+                advancesFile.writeText(obj.getJSONArray("advances").toString(2))
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
 }

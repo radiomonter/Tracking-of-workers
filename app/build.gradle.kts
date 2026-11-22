@@ -52,5 +52,11 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
 
+    // Google Play Services Auth for Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+
+    // OkHttp for lightweight Google Drive REST API v3 sync
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     debugImplementation(libs.androidx.ui.tooling)
 }
